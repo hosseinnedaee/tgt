@@ -10,8 +10,9 @@ use crate::{
     event::Event,
 };
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, hash::Hasher, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
+use std::hash::{Hash, DefaultHasher};
 
 /// `Tui` is a struct that represents the main user interface for the
 /// application. It is responsible for managing the layout and rendering of all
@@ -24,6 +25,7 @@ pub struct Tui {
     action_tx: Option<UnboundedSender<Action>>,
     /// A hashmap of components that make up the user interface.
     components: HashMap<ComponentName, Box<dyn Component>>,
+    hash_frame: Option<u64>,
 }
 /// Implement the `Tui` struct.
 impl Tui {
@@ -63,6 +65,7 @@ impl Tui {
             action_tx,
             components,
             app_context,
+            hash_frame: None,
         }
     }
     /// Register an action handler that can send actions for processing if
@@ -122,6 +125,14 @@ impl Tui {
     /// # Returns
     /// * `Result<()>` - An Ok result or an error.
     pub fn draw(&mut self, frame: &mut ratatui::Frame<'_>, area: Rect) -> Result<(), AppError<()>> {
+        if let Some(current_hash) = self.hash_frame {
+            let mut s = DefaultHasher::new();
+            frame.hash(&mut s);
+            let new_hash = s.finish();
+            if current_hash.cmp(&new_hash) == std::cmp::Ordering::Equal {
+                return Ok(());
+            }
+        }
         self.components
             .get_mut(&ComponentName::StatusBar)
             .unwrap()
@@ -182,6 +193,10 @@ impl Tui {
                 panic!("Failed to get component: {}", ComponentName::StatusBar)
             })
             .draw(frame, main_layout[2])?;
+
+        let mut s = DefaultHasher::new();
+        frame.hash(&mut s);
+        self.hash_frame = Some(s.finish());
 
         Ok(())
     }
